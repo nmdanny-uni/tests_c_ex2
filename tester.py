@@ -2,9 +2,8 @@ import subprocess
 import sys
 from unittest import TestCase
 from os import listdir
-from os import path
+from os import path, makedirs, rmdir
 from os.path import isfile, join, isdir, exists
-from sys import platform, exit
 
 
 #######################################################################################################################
@@ -57,11 +56,6 @@ path_to_invalid_trees = path.join(path_to_test_files, name_of_invalid_trees)
 path_to_no_trees = path.join(path_to_test_files, name_of_no_tree)
 
 path_to_system_out = path.join(path_to_test_files, "system_out")
-path_to_user_out = path.join(path_to_test_files, "user_out")
-
-# name of files
-name_of_user_output_file_no_folder = "_user" + "_output" + ".txt"
-name_of_user_errors_file_no_folder = "_user" + "_errors" + ".txt"
 
 name_of_school_solution_output_no_folder = "_school_solution" + "_output" + ".txt"
 name_of_school_solution_errors_no_folder = "_school_solution" + "_errors" + ".txt"

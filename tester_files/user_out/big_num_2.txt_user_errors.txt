@@ -1,1 +1,0 @@
-TreeAnalyzer: /cs/usr/danielkerbel/university/cppworkshop/ex2/TreeAnalyzer.c:157: addChild: Assertion `parentKey < graph->nodeCount && childKey < graph->nodeCount' failed.
