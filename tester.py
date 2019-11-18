@@ -1,13 +1,49 @@
 import subprocess
+import sys
 from unittest import TestCase
 from os import listdir
 from os import path
 from os.path import isfile, join, isdir, exists
-from sys import platform
+from sys import platform, exit
 
-tester_ver = 1.2
 
-path_to_compiled_files = path.join("../cmake-build-debug/TreeAnalyzer")
+#######################################################################################################################
+# You may need to change this, depending on where you placed the tests
+#######################################################################################################################
+
+# this assumes your project structure is as follows:
+# ex2/
+# ex2/tests
+# ex2/tests/tester.py
+# ex2/tests/tester_files
+# ex2/cmake-build-debug/
+# ex2/cmake-build-debug/TreeAnalyzer
+# (If using CLion, the 'cmake-build-debug' folder should be created automatically)
+PATH_TO_EXECUTABLE_FOLDER = "../cmake-build-debug/"
+
+# You can also compile via gcc, by running the following in the terminal:
+# cd <TYPE THE PATH TO ex2 FOLDER>
+# mkdir cmake-build-debug
+# cd cmake-build-debug
+# cmake .. && make
+
+
+#######################################################################################################################
+# You shouldn't have to modify anything below this line in order to run the tests
+#######################################################################################################################
+
+EXECUTABLE_NAME = "TreeAnalyzer"
+if sys.platform == "win32":
+    EXECUTABLE_NAME += ".exe"
+
+path_to_compiled_files = path.join(PATH_TO_EXECUTABLE_FOLDER, EXECUTABLE_NAME)
+
+if not isfile(path_to_compiled_files):
+    print(f"Couldn't find the TreeAnalyzer executable at \"{path_to_compiled_files}\"\n"
+          f"Either you didn't compile it or you didn't configure the path at the python file \"{__file__}\"",
+          file=sys.stderr)
+    sys.exit(-1)
+
 
 # paths to files and folder
 # these shouldn't need any changes
@@ -22,8 +58,6 @@ path_to_no_trees = path.join(path_to_test_files, name_of_no_tree)
 
 path_to_system_out = path.join(path_to_test_files, "system_out")
 path_to_user_out = path.join(path_to_test_files, "user_out")
-
-
 
 # name of files
 name_of_user_output_file_no_folder = "_user" + "_output" + ".txt"
@@ -85,14 +119,6 @@ num_of_parm = {
 }
 
 
-
-
-def can_not_test(msg):
-    print("Error:", msg)
-    input("press Enter to exit")
-    exit(1)
-
-
 def run_with_cmd(command_list, str=""):
     """
     Execute the given command list with the command line
@@ -102,32 +128,14 @@ def run_with_cmd(command_list, str=""):
     process = subprocess.run(command_list, shell=False, input=str,
                              stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, text=True)
-
-    assert "diff: missing operand" not in process.stderr
     return process.returncode, process.stdout, process.stderr
-
-
-def compare_files(file1, file2):
-    """
-    compare to files with diff
-    :param file1:
-    :param file2:
-    :return: the compaction text if there was errors
-    """
-    assert file1 and file2
-    command_to_compare = ['diff', '-bB','-y', file1, file2]
-    code, output, errors = run_with_cmd(command_to_compare)
-
-    if code != 0:  # if code != 0
-        print(errors)
-        return output
-    return None
 
 
 tests_invalid_trees = [t for t in listdir(path_to_invalid_trees)]
 tests_no_tree = [t for t in listdir(path_to_no_trees)]
 
 number_of_tests = len(num_of_parm) + len(invalid) + len(tests_invalid_trees) + len(tests_no_tree) +len(valid)
+
 
 class Tester(TestCase):
 
@@ -195,14 +203,6 @@ class Tester(TestCase):
         self.assertEquals(school_error, user_errors.strip('\r\n'), "Your STDERR doesn't match school's STDERR")
 
     def run_one_good_test(self, name_of_test, parm):
-        """
-        run one test. run your code with command file given and with the data given. sva the rusolts in a txt file.
-        then compare it to the school solution txt file.
-        :param test_folder_name: the name of the folder of the test (tests/test#)
-        :param files_to_filter_folder: the data folder  (simple of complex)
-        :return: true if was successful.
-        """
-
         path_to_school_solution_output = path.join(path_to_system_out,
                                                    name_of_test + name_of_school_solution_output_no_folder)
         path_to_school_solution_errors = path.join(path_to_system_out, "empty.txt")
