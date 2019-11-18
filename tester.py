@@ -1,6 +1,6 @@
 import subprocess
 import sys
-from unittest import TestCase
+import unittest
 from os import listdir
 from os import path, makedirs, rmdir
 from os.path import isfile, join, isdir, exists
@@ -47,12 +47,12 @@ if not isfile(path_to_compiled_files):
 # paths to files and folder
 # these shouldn't need any changes
 name_of_good = "good_trees"
-name_of_invalid_trees = "invalid_trees"
+name_of_invalid_graphs = "invalid_graphs"
 name_of_no_tree = "no_trees"
 
 path_to_test_files = path.join("tester_files")
 path_to_good_trees = path.join(path_to_test_files, name_of_good)
-path_to_invalid_trees = path.join(path_to_test_files, name_of_invalid_trees)
+path_to_invalid_graphs = path.join(path_to_test_files, name_of_invalid_graphs)
 path_to_no_trees = path.join(path_to_test_files, name_of_no_tree)
 
 path_to_system_out = path.join(path_to_test_files, "system_out")
@@ -125,13 +125,7 @@ def run_with_cmd(command_list, str=""):
     return process.returncode, process.stdout, process.stderr
 
 
-tests_invalid_trees = [t for t in listdir(path_to_invalid_trees)]
-tests_no_tree = [t for t in listdir(path_to_no_trees)]
-
-number_of_tests = len(num_of_parm) + len(invalid) + len(tests_invalid_trees) + len(tests_no_tree) +len(valid)
-
-
-class Tester(TestCase):
+class Tester(unittest.TestCase):
 
     """ Whether to strip newlines(Windows/Linux) when comparing strings for equality """
     __ignore_newlines: bool
@@ -156,14 +150,15 @@ class Tester(TestCase):
             with self.subTest(name=invalid[name], file=invalid_file):
                 self.run_one_invalid_test(invalid[name], invalid_file)
 
-    def test_invalid_tree_files(self):
-        for name in tests_invalid_trees:
-            name = path.join(path_to_invalid_trees, name) + " 1 2"
+    def test_invalid_graphs(self):
+        for name in [t for t in listdir(path_to_invalid_graphs)]:
+            name = path.join(path_to_invalid_graphs, name) + " 1 2"
             with self.subTest(name=name, file=invalid_file):
                 self.run_one_invalid_test(name, invalid_file)
 
-    def test_check_non_graph_trees(self):
-        for name in tests_no_tree:
+    @unittest.skip("Not needed in 2019-2020 semester A")
+    def test_valid_graphs_that_are_not_trees(self):
+        for name in [t for t in listdir(path_to_no_trees)]:
             name = path.join(path_to_no_trees, name) + " 1 2"
             with self.subTest(name=name, file=no_tree_file):
                 self.run_one_invalid_test(name, no_tree_file)
