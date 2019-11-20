@@ -18,15 +18,21 @@ from shutil import which
 # ex2/tests/tester_files
 # ex2/cmake-build-debug/
 # ex2/cmake-build-debug/TreeAnalyzer
-# (If using CLion, the 'cmake-build-debug' folder should be created automatically)
 PATH_TO_EXECUTABLE_FOLDER = "../cmake-build-debug/"
 
-# You can also compile via gcc, by running the following in the terminal:
-# cd <TYPE THE PATH TO ex2 FOLDER>
-# mkdir cmake-build-debug
-# cd cmake-build-debug
-# cmake .. && make
+# If system has valgrind available, use it to ensure your program has no memory leaks.
+# On Windows/other systems with no 'valgrind' in path, this doesn't do anything.
+USE_VALGRIND_IF_AVAILABLE = True
 
+# Ignore trailing newlines at end of each line when comparing strings
+# A proper solution should handle them correctly, but you can temporarily enable this for debugging
+IGNORE_NEWLINES = False
+
+# Tries updating the school files if we're on a HUJI system.
+UPDATE_SCHOOL_FILES = True
+
+# Correct for 2019-2020 semester A course
+SCHOOL_EXECUTABLE_PATH = "/cs/course/current/labcc/www/c_ex2/TreeAnalyzer"
 
 #######################################################################################################################
 # You shouldn't have to modify anything below this line in order to run the tests
@@ -113,6 +119,20 @@ num_of_parm = {
 }
 
 
+def update_school_files(command_list, school_stdout_file, school_stderr_file):
+    """ Given an argument list of a TreeAnalyzer call, performs that call on
+        the school's solution, updating the corresponding school output files in system_out """
+    command_list = command_list.copy()
+    command_list[0] = SCHOOL_EXECUTABLE_PATH
+    code, out, err, valgrind = run_with_cmd(command_list, valgrind=False)
+
+    with open(school_stdout_file, 'w') as stdout_file:
+        stdout_file.write(out)
+
+    with open(school_stderr_file, 'w') as stderr_file:
+        stderr_file.write(err)
+
+
 def run_with_cmd(command_list, str="", valgrind=False):
     """
     Execute the given command list with the command line
@@ -127,7 +147,7 @@ def run_with_cmd(command_list, str="", valgrind=False):
                              stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, text=True)
 
-    if valgrind_outfile:
+    if valgrind:
         valgrind_outfile.seek(0)
         valgrind_output = valgrind_outfile.read()
         valgrind_outfile.close()
@@ -137,19 +157,34 @@ def run_with_cmd(command_list, str="", valgrind=False):
 
 class Tester(unittest.TestCase):
 
-    """ Whether to strip newlines(Windows/Linux) when comparing strings for equality """
+    """ Whether to strip trailing newlines(Windows/Linux) when comparing strings for equality """
     __ignore_newlines: bool
 
     """ Whether to run the executable via valgrind"""
     __run_with_valgrind: bool
 
+    """ Whether to update school files via school solution """
+    __update_school_files: bool
+
     def setUp(self) -> None:
-        self.__ignore_newlines = True
-        self.__run_with_valgrind = True if which('valgrind') else False
-        if not self.__run_with_valgrind:
-            print("Tests were run without valgrind - this isn't an error, but you should also run these tests within\n"
-                  "a HUJI system (or a Linux system with 'valgrind' in the path) so that we'll be able to ensure\n"
-                  "your program doesn't leak memory.\n", file=sys.stderr)
+        self.__ignore_newlines = IGNORE_NEWLINES
+        if IGNORE_NEWLINES:
+            print("Running tests while ignoring newline differences. Your program should run successfully "
+                  "without them", file=sys.stderr)
+
+        self.__run_with_valgrind = USE_VALGRIND_IF_AVAILABLE
+        if not which('valgrind'):
+            print("No 'valgrind' executable was found in PATH, tests will be run without it.\n"
+                  "HUJI systems should have 'valgrind' pre-installed. Other Linux/OSX systems may require\n"
+                  " it to be manually installed. Windows has no valgrind(unless you use WSL)", file=sys.stderr)
+            self.__run_with_valgrind = False
+
+
+        self.__update_school_files = UPDATE_SCHOOL_FILES
+        if self.__update_school_files and not isfile(SCHOOL_EXECUTABLE_PATH):
+            print(f"UPDATE_SCHOOL_FILES is set, but couldn't find the school solution at {SCHOOL_EXECUTABLE_PATH}\n"
+                  f"Will be using the already included system_out files instead", file=sys.stderr)
+            self.__update_school_files = False
 
     def __clean_string(self, s: str) -> str:
         """ If 'ignore_newlines' is enabled, strips newlines from given string,
@@ -196,8 +231,11 @@ class Tester(unittest.TestCase):
                                                    name_of_school_solution_errors)
 
         command_list = [path_to_compiled_files] + parm.split()
-        code, user_output, user_errors, valgrind_out = run_with_cmd(command_list, valgrind=self.__run_with_valgrind)
 
+        if self.__update_school_files:
+            update_school_files(command_list, path_to_school_solution_output, path_to_school_solution_errors)
+
+        code, user_output, user_errors, valgrind_out = run_with_cmd(command_list, valgrind=self.__run_with_valgrind)
         user_output, user_errors = self.__clean_string(user_output), self.__clean_string(user_errors)
 
         with open(path_to_school_solution_output) as file:
@@ -207,6 +245,7 @@ class Tester(unittest.TestCase):
             school_error = self.__clean_string(file.read())
 
         self.ensure_match(command_list, user_output, user_errors, school_output, school_error)
+        self.assertNotEqual(code, 0, "Program should exit with EXIT_FAILURE(value that isn't 0) if given invalid input")
         self.ensure_valgrind_output_ok(valgrind_out)
 
     def run_one_good_test(self, name_of_test, parm):
@@ -215,8 +254,11 @@ class Tester(unittest.TestCase):
         path_to_school_solution_errors = path.join(path_to_system_out, "empty.txt")
 
         command_list = [path_to_compiled_files] + parm.split()
-        code, user_output, user_errors, valgrind_out = run_with_cmd(command_list, valgrind=self.__run_with_valgrind)
 
+        if self.__update_school_files:
+            update_school_files(command_list, path_to_school_solution_output, path_to_school_solution_errors)
+
+        code, user_output, user_errors, valgrind_out = run_with_cmd(command_list, valgrind=self.__run_with_valgrind)
         user_output, user_errors = self.__clean_string(user_output), self.__clean_string(user_errors)
 
         with open(path_to_school_solution_output) as file:
@@ -226,6 +268,7 @@ class Tester(unittest.TestCase):
             school_error = self.__clean_string(file.read())
 
         self.ensure_match(command_list, user_output, user_errors, school_output, school_error)
+        self.assertEqual(code, 0, "Program should exit with EXIT_SUCCESS if everything is OK")
         self.ensure_valgrind_output_ok(valgrind_out)
 
     def ensure_match(self, command_list, user_output, user_errors, school_output, school_error):
@@ -254,3 +297,9 @@ class Tester(unittest.TestCase):
             return
         self.assertTrue("ERROR SUMMARY: 0" in valgrind_out, (f"There were 1 or more errors detected by valgrind:\n"
                                                              f"{valgrind_out}"))
+
+if __name__ == '__main__':
+    print(f"Run these via `python3 -m unittest {__file__}`", file=sys.stderr)
+    sys.exit(-1)
+
+
