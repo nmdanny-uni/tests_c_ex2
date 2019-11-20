@@ -4,7 +4,8 @@ import unittest
 from os import listdir
 from os import path, makedirs, rmdir
 from os.path import isfile, join, isdir, exists
-
+from tempfile import NamedTemporaryFile
+from shutil import which
 
 #######################################################################################################################
 # You may need to change this, depending on where you placed the tests
@@ -66,15 +67,14 @@ num_of_parm_file = "num_of_parm.txt"
 
 simple_path = path.join(path_to_good_trees, "simple.txt")
 
-invalid = {
+invalid_params = {
     "no_int_num_first": simple_path + " 1.1 2",
     "no_int_num_sec": simple_path + " 1 2.5",
     "char_in_num_1": simple_path + " 2g 4",
     "char_in_num_2": simple_path + " 2 m3",
     "neg_num_1": simple_path + " -2 6",
     "neg_num_2": simple_path + " 2 -6",
-    "big_num_1": simple_path + " 8 3",
-
+    "big_num_1": simple_path + " 8 3"
 
 }
 
@@ -113,16 +113,26 @@ num_of_parm = {
 }
 
 
-def run_with_cmd(command_list, str=""):
+def run_with_cmd(command_list, str="", valgrind=False):
     """
     Execute the given command list with the command line
-    Return a tuple containing the return code, output and errors.
+    Return a tuple containing the return code, output, errors and valgrind output
     """
+    valgrind_outfile, valgrind_output = None, ""
+    if valgrind:
+        valgrind_outfile = NamedTemporaryFile(mode='r+', encoding='utf-8')
+        command_list = ['valgrind', '--leak-check=yes', f'--log-file={valgrind_outfile.name}'] + command_list
 
     process = subprocess.run(command_list, shell=False, input=str,
                              stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, text=True)
-    return process.returncode, process.stdout, process.stderr
+
+    if valgrind_outfile:
+        valgrind_outfile.seek(0)
+        valgrind_output = valgrind_outfile.read()
+        valgrind_outfile.close()
+
+    return process.returncode, process.stdout, process.stderr, valgrind_output
 
 
 class Tester(unittest.TestCase):
@@ -130,8 +140,16 @@ class Tester(unittest.TestCase):
     """ Whether to strip newlines(Windows/Linux) when comparing strings for equality """
     __ignore_newlines: bool
 
+    """ Whether to run the executable via valgrind"""
+    __run_with_valgrind: bool
+
     def setUp(self) -> None:
         self.__ignore_newlines = True
+        self.__run_with_valgrind = True if which('valgrind') else False
+        if not self.__run_with_valgrind:
+            print("Tests were run without valgrind - this isn't an error, but you should also run these tests within\n"
+                  "a HUJI system (or a Linux system with 'valgrind' in the path) so that we'll be able to ensure\n"
+                  "your program doesn't leak memory.\n", file=sys.stderr)
 
     def __clean_string(self, s: str) -> str:
         """ If 'ignore_newlines' is enabled, strips newlines from given string,
@@ -146,9 +164,9 @@ class Tester(unittest.TestCase):
                 self.run_one_invalid_test(num_of_parm[name], num_of_parm_file)
 
     def test_invalid_parameters(self):
-        for name in invalid:
-            with self.subTest(name=invalid[name], file=invalid_file):
-                self.run_one_invalid_test(invalid[name], invalid_file)
+        for name in invalid_params:
+            with self.subTest(name=invalid_params[name], file=invalid_file):
+                self.run_one_invalid_test(invalid_params[name], invalid_file)
 
     def test_invalid_graphs(self):
         for name in [t for t in listdir(path_to_invalid_graphs)]:
@@ -178,7 +196,7 @@ class Tester(unittest.TestCase):
                                                    name_of_school_solution_errors)
 
         command_list = [path_to_compiled_files] + parm.split()
-        code, user_output, user_errors = run_with_cmd(command_list)
+        code, user_output, user_errors, valgrind_out = run_with_cmd(command_list, valgrind=self.__run_with_valgrind)
 
         user_output, user_errors = self.__clean_string(user_output), self.__clean_string(user_errors)
 
@@ -188,8 +206,8 @@ class Tester(unittest.TestCase):
         with open(path_to_school_solution_errors) as file:
             school_error = self.__clean_string(file.read())
 
-        self.assertEquals(user_output, school_output.strip('\r\n'), "Your STDOUT doesn't match school's STDOUT")
-        self.assertEquals(school_error, user_errors.strip('\r\n'), "Your STDERR doesn't match school's STDERR")
+        self.ensure_match(command_list, user_output, user_errors, school_output, school_error)
+        self.ensure_valgrind_output_ok(valgrind_out)
 
     def run_one_good_test(self, name_of_test, parm):
         path_to_school_solution_output = path.join(path_to_system_out,
@@ -197,7 +215,7 @@ class Tester(unittest.TestCase):
         path_to_school_solution_errors = path.join(path_to_system_out, "empty.txt")
 
         command_list = [path_to_compiled_files] + parm.split()
-        code, user_output, user_errors = run_with_cmd(command_list)  # run your code
+        code, user_output, user_errors, valgrind_out = run_with_cmd(command_list, valgrind=self.__run_with_valgrind)
 
         user_output, user_errors = self.__clean_string(user_output), self.__clean_string(user_errors)
 
@@ -207,5 +225,32 @@ class Tester(unittest.TestCase):
         with open(path_to_school_solution_errors) as file:
             school_error = self.__clean_string(file.read())
 
-        self.assertEquals(user_output, school_output, "Your STDOUT doesn't match school's STDOUT")
-        self.assertEquals(school_error, user_errors, "Your STDERR doesn't match school's STDERR")
+        self.ensure_match(command_list, user_output, user_errors, school_output, school_error)
+        self.ensure_valgrind_output_ok(valgrind_out)
+
+    def ensure_match(self, command_list, user_output, user_errors, school_output, school_error):
+        command = " ".join(command_list)
+        big_separator = "*" * 80
+        separator = "-" * 40
+        msg = (f"{big_separator}\n"
+               f"Your STDOUT:\n"
+               f"{user_output}\n"
+               f"{separator}\n"
+               f"Your STDERR:\n"
+               f"{user_errors}\n"
+               f"{separator}\n"
+               f"School STDOUT:\n"
+               f"{school_output}\n"
+               f"{separator}\n"
+               f"School STDERR:\n"
+               f"{school_error}\n"
+               f"{big_separator}")
+
+        self.assertEqual(user_output, school_output, f"\nSTDOUT mismatch while running command \"{command}\"\n{msg}")
+        self.assertEqual(user_errors, school_error, f"\nSTDERR mismatch while running command \"{command}\"\n{msg}")
+
+    def ensure_valgrind_output_ok(self, valgrind_out: str):
+        if not valgrind_out:
+            return
+        self.assertTrue("ERROR SUMMARY: 0" in valgrind_out, (f"There were 1 or more errors detected by valgrind:\n"
+                                                             f"{valgrind_out}"))
