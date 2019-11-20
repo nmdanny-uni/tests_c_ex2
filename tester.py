@@ -1,23 +1,17 @@
 import subprocess
 import sys
-import unittest
 from os import listdir
 from os import path, makedirs, rmdir
 from os.path import isfile, join, isdir, exists
 from tempfile import NamedTemporaryFile
 from shutil import which
+import pytest
 
 #######################################################################################################################
 # You may need to change this, depending on where you placed the tests
+# See README for information
 #######################################################################################################################
 
-# this assumes your project structure is as follows:
-# ex2/
-# ex2/tests
-# ex2/tests/tester.py
-# ex2/tests/tester_files
-# ex2/cmake-build-debug/
-# ex2/cmake-build-debug/TreeAnalyzer
 PATH_TO_EXECUTABLE_FOLDER = "../cmake-build-debug/"
 
 # If system has valgrind available, use it to ensure your program has no memory leaks.
@@ -50,7 +44,6 @@ if not isfile(path_to_compiled_files):
           file=sys.stderr)
     sys.exit(-1)
 
-
 # paths to files and folder
 # these shouldn't need any changes
 name_of_good = "good_trees"
@@ -68,6 +61,7 @@ name_of_school_solution_output_no_folder = "_school_solution" + "_output" + ".tx
 name_of_school_solution_errors_no_folder = "_school_solution" + "_errors" + ".txt"
 
 invalid_file = "invalid.txt"
+empty_file = "empty.txt"
 no_tree_file = "no_tree.txt"
 num_of_parm_file = "num_of_parm.txt"
 
@@ -84,8 +78,10 @@ invalid_params = {
 
 }
 
+
 def path_to(name_of_file):
     return path.join(path_to_good_trees, name_of_file)
+
 
 valid = {
     "simple_1": simple_path + " 4 5",
@@ -108,9 +104,8 @@ valid = {
     "big_4": path_to("big_tree.txt") + " 15 29",
     "big_5": path_to("big_tree.txt") + " 7 27",
 
-    "one_kodkod" : path_to("one_kodkod.txt") + " 0 0"
+    "one_kodkod": path_to("one_kodkod.txt") + " 0 0"
 }
-
 
 num_of_parm = {
     "les_parm": simple_path + " 1",
@@ -155,151 +150,132 @@ def run_with_cmd(command_list, str="", valgrind=False):
     return process.returncode, process.stdout, process.stderr, valgrind_output
 
 
-class Tester(unittest.TestCase):
-
-    """ Whether to strip trailing newlines(Windows/Linux) when comparing strings for equality """
-    __ignore_newlines: bool
-
-    """ Whether to run the executable via valgrind"""
-    __run_with_valgrind: bool
-
-    """ Whether to update school files via school solution """
-    __update_school_files: bool
-
-    def setUp(self) -> None:
-        self.__ignore_newlines = IGNORE_NEWLINES
-        if IGNORE_NEWLINES:
-            print("Running tests while ignoring newline differences. Your program should run successfully "
-                  "without them", file=sys.stderr)
-
-        self.__run_with_valgrind = USE_VALGRIND_IF_AVAILABLE
-        if not which('valgrind'):
-            print("No 'valgrind' executable was found in PATH, tests will be run without it.\n"
-                  "HUJI systems should have 'valgrind' pre-installed. Other Linux/OSX systems may require\n"
-                  " it to be manually installed. Windows has no valgrind(unless you use WSL)", file=sys.stderr)
-            self.__run_with_valgrind = False
+def clean_string(s: str) -> str:
+    """ If 'ignore_newlines' is enabled, strips newlines from given string,
+         otherwise doesn't change it."""
+    if IGNORE_NEWLINES:
+        return s.rstrip('\r\n')
+    return s
 
 
-        self.__update_school_files = UPDATE_SCHOOL_FILES
-        if self.__update_school_files and not isfile(SCHOOL_EXECUTABLE_PATH):
-            print(f"UPDATE_SCHOOL_FILES is set, but couldn't find the school solution at {SCHOOL_EXECUTABLE_PATH}\n"
-                  f"Will be using the already included system_out files instead", file=sys.stderr)
-            self.__update_school_files = False
+@pytest.mark.parametrize("param_name", list(num_of_parm.values()))
+def test_invalid_parameter_count(param_name: str):
+    run_one_invalid_test(param_name, num_of_parm_file)
 
-    def __clean_string(self, s: str) -> str:
-        """ If 'ignore_newlines' is enabled, strips newlines from given string,
-            otherwise doesn't change it."""
-        if self.__ignore_newlines:
-            return s.rstrip('\r\n')
-        return s
+@pytest.mark.parametrize("params", invalid_params.values())
+def test_invalid_parameter(params: str):
+    run_one_invalid_test(params, invalid_file)
 
-    def test_invalid_number_of_parameters(self):
-        for name in num_of_parm:
-            with self.subTest(name=num_of_parm[name], file=num_of_parm_file):
-                self.run_one_invalid_test(num_of_parm[name], num_of_parm_file)
 
-    def test_invalid_parameters(self):
-        for name in invalid_params:
-            with self.subTest(name=invalid_params[name], file=invalid_file):
-                self.run_one_invalid_test(invalid_params[name], invalid_file)
+@pytest.mark.parametrize("file_name", list(listdir(path_to_invalid_graphs)))
+def test_invalid_graph(file_name: str):
+    full_path = path.join(path_to_invalid_graphs, file_name) + " 1 2"
+    run_one_invalid_test(full_path, invalid_file)
 
-    def test_invalid_graphs(self):
-        for name in [t for t in listdir(path_to_invalid_graphs)]:
-            name = path.join(path_to_invalid_graphs, name) + " 1 2"
-            with self.subTest(name=name, file=invalid_file):
-                self.run_one_invalid_test(name, invalid_file)
 
-    @unittest.skip("Not needed in 2019-2020 semester A")
-    def test_valid_graphs_that_are_not_trees(self):
-        for name in [t for t in listdir(path_to_no_trees)]:
-            name = path.join(path_to_no_trees, name) + " 1 2"
-            with self.subTest(name=name, file=no_tree_file):
-                self.run_one_invalid_test(name, no_tree_file)
+@pytest.mark.skip("Not relevant for this semester")
+@pytest.mark.parametrize("path", list(listdir(path_to_no_trees)))
+def test_valid_graph_not_a_tree(path: str):
+    run_one_invalid_test(path, no_tree_file)
 
-    def test_valid_trees(self):
-        for name in valid:
-            with self.subTest(name=name, file=valid[name]):
-                self.run_one_good_test(name, valid[name])
 
-    def run_one_invalid_test(self, parm, error):
-        name_of_school_solution_output = "empty.txt"
-        name_of_school_solution_errors = error
+@pytest.mark.parametrize("test_name", valid.keys())
+def test_valid_tree(test_name: str):
+    run_one_good_test(test_name, valid[test_name])
 
-        path_to_school_solution_output = path.join(path_to_system_out,
-                                                   name_of_school_solution_output)
-        path_to_school_solution_errors = path.join(path_to_system_out,
-                                                   name_of_school_solution_errors)
 
-        command_list = [path_to_compiled_files] + parm.split()
+def run_test(command_list, school_out_path, school_err_path, success: bool):
+    """ Runs a test, """
+    if UPDATE_SCHOOL_FILES:
+        update_school_files(command_list, school_out_path, school_err_path)
 
-        if self.__update_school_files:
-            update_school_files(command_list, path_to_school_solution_output, path_to_school_solution_errors)
+    code, user_output, user_errors, valgrind_out = run_with_cmd(command_list, valgrind=USE_VALGRIND_IF_AVAILABLE)
+    user_output, user_errors = clean_string(user_output), clean_string(user_errors)
 
-        code, user_output, user_errors, valgrind_out = run_with_cmd(command_list, valgrind=self.__run_with_valgrind)
-        user_output, user_errors = self.__clean_string(user_output), self.__clean_string(user_errors)
+    with open(school_out_path) as file:
+        school_output = clean_string(file.read())
 
-        with open(path_to_school_solution_output) as file:
-            school_output = self.__clean_string(file.read())
+    with open(school_err_path) as file:
+        school_error = clean_string(file.read())
 
-        with open(path_to_school_solution_errors) as file:
-            school_error = self.__clean_string(file.read())
+    ensure_match(command_list, user_output, user_errors, school_output, school_error)
+    if success:
+        assert code == 0, "On success, program should return 0"
+    else:
+        assert code == 1, "On failure, program should return 1"
+    ensure_valgrind_output_ok(valgrind_out)
 
-        self.ensure_match(command_list, user_output, user_errors, school_output, school_error)
-        self.assertNotEqual(code, 0, "Program should exit with EXIT_FAILURE(value that isn't 0) if given invalid input")
-        self.ensure_valgrind_output_ok(valgrind_out)
 
-    def run_one_good_test(self, name_of_test, parm):
-        path_to_school_solution_output = path.join(path_to_system_out,
-                                                   name_of_test + name_of_school_solution_output_no_folder)
-        path_to_school_solution_errors = path.join(path_to_system_out, "empty.txt")
+def run_one_invalid_test(parm, error):
+    name_of_school_solution_output = "empty.txt"
+    name_of_school_solution_errors = error
 
-        command_list = [path_to_compiled_files] + parm.split()
+    path_to_school_solution_output = path.join(path_to_system_out,
+                                               name_of_school_solution_output)
+    path_to_school_solution_errors = path.join(path_to_system_out,
+                                               name_of_school_solution_errors)
+    command_list = [path_to_compiled_files] + parm.split()
+    run_test(command_list, path_to_school_solution_output, path_to_school_solution_errors, False)
 
-        if self.__update_school_files:
-            update_school_files(command_list, path_to_school_solution_output, path_to_school_solution_errors)
 
-        code, user_output, user_errors, valgrind_out = run_with_cmd(command_list, valgrind=self.__run_with_valgrind)
-        user_output, user_errors = self.__clean_string(user_output), self.__clean_string(user_errors)
+def run_one_good_test(name_of_test, parm):
+    path_to_school_solution_output = path.join(path_to_system_out,
+                                               name_of_test + name_of_school_solution_output_no_folder)
+    path_to_school_solution_errors = path.join(path_to_system_out, "empty.txt")
+    command_list = [path_to_compiled_files] + parm.split()
+    run_test(command_list, path_to_school_solution_output, path_to_school_solution_errors, True)
 
-        with open(path_to_school_solution_output) as file:
-            school_output = self.__clean_string(file.read())
 
-        with open(path_to_school_solution_errors) as file:
-            school_error = self.__clean_string(file.read())
+def ensure_match(command_list, user_output, user_errors, school_output, school_error):
+    command = " ".join(command_list)
+    big_separator = "*" * 80
+    separator = "-" * 40
+    msg = (f"{big_separator}\n"
+           f"Your STDOUT:\n"
+           f"{user_output}\n"
+           f"{separator}\n"
+           f"Your STDERR:\n"
+           f"{user_errors}\n"
+           f"{separator}\n"
+           f"School STDOUT:\n"
+           f"{school_output}\n"
+           f"{separator}\n"
+           f"School STDERR:\n"
+           f"{school_error}\n"
+           f"{big_separator}")
 
-        self.ensure_match(command_list, user_output, user_errors, school_output, school_error)
-        self.assertEqual(code, 0, "Program should exit with EXIT_SUCCESS if everything is OK")
-        self.ensure_valgrind_output_ok(valgrind_out)
+    print(f"Testing command \"{command_list}\"\n{msg}")
+    assert user_output == school_output, f"STDOUT mismatch while running command {command}"
+    assert user_errors == school_error, f"STDERR mismatch while running command {command}"
 
-    def ensure_match(self, command_list, user_output, user_errors, school_output, school_error):
-        command = " ".join(command_list)
-        big_separator = "*" * 80
-        separator = "-" * 40
-        msg = (f"{big_separator}\n"
-               f"Your STDOUT:\n"
-               f"{user_output}\n"
-               f"{separator}\n"
-               f"Your STDERR:\n"
-               f"{user_errors}\n"
-               f"{separator}\n"
-               f"School STDOUT:\n"
-               f"{school_output}\n"
-               f"{separator}\n"
-               f"School STDERR:\n"
-               f"{school_error}\n"
-               f"{big_separator}")
 
-        self.assertEqual(user_output, school_output, f"\nSTDOUT mismatch while running command \"{command}\"\n{msg}")
-        self.assertEqual(user_errors, school_error, f"\nSTDERR mismatch while running command \"{command}\"\n{msg}")
+def ensure_valgrind_output_ok(valgrind_out: str):
+    if not valgrind_out:
+        return
+    assert "ERROR SUMMARY: 0" in valgrind_out, (f"There were 1 or more errors detected by valgrind:\n"
+                                                f"{valgrind_out}")
 
-    def ensure_valgrind_output_ok(self, valgrind_out: str):
-        if not valgrind_out:
-            return
-        self.assertTrue("ERROR SUMMARY: 0" in valgrind_out, (f"There were 1 or more errors detected by valgrind:\n"
-                                                             f"{valgrind_out}"))
+
+def tester_init():
+    global IGNORE_NEWLINES, USE_VALGRIND_IF_AVAILABLE, UPDATE_SCHOOL_FILES
+    if IGNORE_NEWLINES:
+        print("Running tests while ignoring newline differences. Your program should run successfully "
+              "without them", file=sys.stderr)
+
+    if USE_VALGRIND_IF_AVAILABLE and not which('valgrind'):
+        print("No 'valgrind' executable was found in PATH, tests will be run without it.\n"
+              "HUJI systems should have 'valgrind' pre-installed. Other Linux/OSX systems may require\n"
+              " it to be manually installed. Windows has no valgrind(unless you use WSL)", file=sys.stderr)
+        USE_VALGRIND_IF_AVAILABLE = False
+
+    if UPDATE_SCHOOL_FILES and not isfile(SCHOOL_EXECUTABLE_PATH):
+        print(f"UPDATE_SCHOOL_FILES is set, but couldn't find the school solution at {SCHOOL_EXECUTABLE_PATH}\n"
+              f"Will be using the already included system_out files instead", file=sys.stderr)
+        UPDATE_SCHOOL_FILES = False
+
 
 if __name__ == '__main__':
-    print(f"Run these via `python3 -m unittest {__file__}`", file=sys.stderr)
+    print(f"Run this via `python3 -m pytest tester.py`", file=sys.stderr)
     sys.exit(-1)
-
-
+else:
+    tester_init()
