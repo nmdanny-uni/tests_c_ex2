@@ -1,17 +1,21 @@
 import subprocess
 import sys
+import random
+from pathlib import Path
 from os import listdir
 from os import path, makedirs, rmdir
 from os.path import isfile, join, isdir, exists
 from tempfile import NamedTemporaryFile
 from shutil import which
 import pytest
+import re
 
 #######################################################################################################################
 # You may need to change this, depending on where you placed the tests
 # See README for information
 #######################################################################################################################
 
+# Use the executable built via CLion
 PATH_TO_EXECUTABLE_FOLDER = "../cmake-build-debug/"
 
 # If system has valgrind available, use it to ensure your program has no memory leaks.
@@ -32,30 +36,20 @@ SCHOOL_EXECUTABLE_PATH = "/cs/course/current/labcc/www/c_ex2/TreeAnalyzer"
 # You shouldn't have to modify anything below this line in order to run the tests
 #######################################################################################################################
 
+ON_HUJI = exists(SCHOOL_EXECUTABLE_PATH)
+
 EXECUTABLE_NAME = "TreeAnalyzer"
 if sys.platform == "win32":
     EXECUTABLE_NAME += ".exe"
 
-path_to_compiled_files = path.join(PATH_TO_EXECUTABLE_FOLDER, EXECUTABLE_NAME)
+PATH_TO_EXECUTABLE = path.join(PATH_TO_EXECUTABLE_FOLDER, EXECUTABLE_NAME)
+PATH_TO_TESTER_DIR = path.join("tester_files")
+PATH_TO_VALID_TREES = path.join(PATH_TO_TESTER_DIR, 'good_trees')
+PATH_TO_INVALID_GRAPHS = path.join(PATH_TO_TESTER_DIR, 'invalid_graphs')
+PATH_TO_NON_TREE_GRAPHS = path.join(PATH_TO_TESTER_DIR, 'no_trees')
+PATH_TO_GENERATED_GRAPHS = path.join(PATH_TO_TESTER_DIR, 'generated')
 
-if not isfile(path_to_compiled_files):
-    print(f"Couldn't find the TreeAnalyzer executable at \"{path_to_compiled_files}\"\n"
-          f"Either you didn't compile it or you didn't configure the path at the python file \"{__file__}\"",
-          file=sys.stderr)
-    sys.exit(-1)
-
-# paths to files and folder
-# these shouldn't need any changes
-name_of_good = "good_trees"
-name_of_invalid_graphs = "invalid_graphs"
-name_of_no_tree = "no_trees"
-
-path_to_test_files = path.join("tester_files")
-path_to_good_trees = path.join(path_to_test_files, name_of_good)
-path_to_invalid_graphs = path.join(path_to_test_files, name_of_invalid_graphs)
-path_to_no_trees = path.join(path_to_test_files, name_of_no_tree)
-
-path_to_system_out = path.join(path_to_test_files, "system_out")
+PATH_TO_EXPECTED_OUTPUTS = path.join(PATH_TO_TESTER_DIR, "system_out")
 
 name_of_school_solution_output_no_folder = "_school_solution" + "_output" + ".txt"
 name_of_school_solution_errors_no_folder = "_school_solution" + "_errors" + ".txt"
@@ -65,7 +59,7 @@ empty_file = "empty.txt"
 no_tree_file = "no_tree.txt"
 num_of_parm_file = "num_of_parm.txt"
 
-simple_path = path.join(path_to_good_trees, "simple.txt")
+simple_path = path.join(PATH_TO_VALID_TREES, "simple.txt")
 
 invalid_params = {
     "no_int_num_first": simple_path + " 1.1 2",
@@ -80,7 +74,7 @@ invalid_params = {
 
 
 def path_to(name_of_file):
-    return path.join(path_to_good_trees, name_of_file)
+    return path.join(PATH_TO_VALID_TREES, name_of_file)
 
 
 valid = {
@@ -138,16 +132,21 @@ def run_with_cmd(command_list, str="", valgrind=False):
         valgrind_outfile = NamedTemporaryFile(mode='r+', encoding='utf-8')
         command_list = ['valgrind', '--leak-check=yes', f'--log-file={valgrind_outfile.name}'] + command_list
 
-    process = subprocess.run(command_list, shell=False, input=str,
-                             stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, text=True)
+    print(f"Running command \"{' '.join(command_list)}\"")
+    try:
+        process = subprocess.run(command_list, shell=False, input=str,
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, text=True)
 
-    if valgrind:
-        valgrind_outfile.seek(0)
-        valgrind_output = valgrind_outfile.read()
-        valgrind_outfile.close()
+        if valgrind:
+            valgrind_outfile.seek(0)
+            valgrind_output = valgrind_outfile.read()
+            valgrind_outfile.close()
 
-    return process.returncode, process.stdout, process.stderr, valgrind_output
+        return process.returncode, process.stdout, process.stderr, valgrind_output
+    except Exception as e:
+        print(f"Error while running subprocess: {e}")
+        sys.exit(-1)
 
 
 def clean_string(s: str) -> str:
@@ -162,29 +161,65 @@ def clean_string(s: str) -> str:
 def test_invalid_parameter_count(param_name: str):
     run_one_invalid_test(param_name, num_of_parm_file)
 
+
 @pytest.mark.parametrize("params", invalid_params.values())
 def test_invalid_parameter(params: str):
     run_one_invalid_test(params, invalid_file)
 
 
-@pytest.mark.parametrize("file_name", list(listdir(path_to_invalid_graphs)))
+@pytest.mark.parametrize("file_name", list(listdir(PATH_TO_INVALID_GRAPHS)))
 def test_invalid_graph(file_name: str):
-    full_path = path.join(path_to_invalid_graphs, file_name) + " 1 2"
+    full_path = path.join(PATH_TO_INVALID_GRAPHS, file_name) + " 1 2"
     run_one_invalid_test(full_path, invalid_file)
 
 
 @pytest.mark.skip("Not relevant for this semester")
-@pytest.mark.parametrize("path", list(listdir(path_to_no_trees)))
+@pytest.mark.parametrize("path", list(listdir(PATH_TO_NON_TREE_GRAPHS)))
 def test_valid_graph_not_a_tree(path: str):
     run_one_invalid_test(path, no_tree_file)
 
 
-@pytest.mark.parametrize("test_name", valid.keys())
+@pytest.mark.parametrize("test_name", valid.keys(), ids=list(valid.values()))
 def test_valid_tree(test_name: str):
     run_one_good_test(test_name, valid[test_name])
 
 
-def run_test(command_list, school_out_path, school_err_path, success: bool):
+@pytest.mark.parametrize("txt_path", [Path(PATH_TO_GENERATED_GRAPHS) / f for f in map(Path, listdir(PATH_TO_GENERATED_GRAPHS))
+                                      if f.stem.startswith('valid') and f.name.endswith('.txt')],
+                         ids=lambda path: str(path.stem))
+def test_valid_generated(txt_path: Path):
+    name = txt_path.stem
+    elements = name.split('-')
+    node_count = int(elements[1])
+    school_out_path = txt_path.with_suffix('.expected_out')
+    school_err_path = txt_path.with_suffix('.expected_stderr')
+    if UPDATE_SCHOOL_FILES:
+        # randomly generate valid 'from' and 'to' parameters
+        from_node = random.randint(0, node_count - 1)
+        to_node = random.randint(0, node_count - 1)
+        command_list = [PATH_TO_EXECUTABLE, str(txt_path), str(from_node), str(to_node)]
+        with open(school_out_path, 'w') as expected_out,\
+             open(school_err_path, 'w') as expected_err:
+            update_school_files(command_list, expected_out.name, expected_err.name)
+    elif not (school_out_path.exists() and school_err_path.exists()):
+        pytest.skip(f"Couldn't find generated school output/error files for {txt_path}, skipping.")
+        return
+    else:
+        # find the 'from' and 'to' parameters for this test
+        with open(school_out_path, 'r') as out_file:
+            out_st = out_file.read()
+            match = re.search(r"Shortest Path Between (\d+) and (\d+)", out_st)
+            if match:
+                from_node = match.group(1)
+                to_node = match.group(2)
+            else:
+                from_node = to_node = "0"
+        command_list = [PATH_TO_EXECUTABLE, str(txt_path), from_node, to_node]
+
+    run_test(command_list, school_out_path, school_err_path)
+
+
+def run_test(command_list, school_out_path, school_err_path):
     """ Runs a test, """
     if UPDATE_SCHOOL_FILES:
         update_school_files(command_list, school_out_path, school_err_path)
@@ -198,32 +233,34 @@ def run_test(command_list, school_out_path, school_err_path, success: bool):
     with open(school_err_path) as file:
         school_error = clean_string(file.read())
 
+    success = len(school_error) == 0
+
     ensure_match(command_list, user_output, user_errors, school_output, school_error)
+    ensure_valgrind_output_ok(valgrind_out)
     if success:
         assert code == 0, "On success, program should return 0"
     else:
         assert code == 1, "On failure, program should return 1"
-    ensure_valgrind_output_ok(valgrind_out)
 
 
 def run_one_invalid_test(parm, error):
     name_of_school_solution_output = "empty.txt"
     name_of_school_solution_errors = error
 
-    path_to_school_solution_output = path.join(path_to_system_out,
+    path_to_school_solution_output = path.join(PATH_TO_EXPECTED_OUTPUTS,
                                                name_of_school_solution_output)
-    path_to_school_solution_errors = path.join(path_to_system_out,
+    path_to_school_solution_errors = path.join(PATH_TO_EXPECTED_OUTPUTS,
                                                name_of_school_solution_errors)
-    command_list = [path_to_compiled_files] + parm.split()
-    run_test(command_list, path_to_school_solution_output, path_to_school_solution_errors, False)
+    command_list = [PATH_TO_EXECUTABLE] + parm.split()
+    run_test(command_list, path_to_school_solution_output, path_to_school_solution_errors)
 
 
 def run_one_good_test(name_of_test, parm):
-    path_to_school_solution_output = path.join(path_to_system_out,
+    path_to_school_solution_output = path.join(PATH_TO_EXPECTED_OUTPUTS,
                                                name_of_test + name_of_school_solution_output_no_folder)
-    path_to_school_solution_errors = path.join(path_to_system_out, "empty.txt")
-    command_list = [path_to_compiled_files] + parm.split()
-    run_test(command_list, path_to_school_solution_output, path_to_school_solution_errors, True)
+    path_to_school_solution_errors = path.join(PATH_TO_EXPECTED_OUTPUTS, "empty.txt")
+    command_list = [PATH_TO_EXECUTABLE] + parm.split()
+    run_test(command_list, path_to_school_solution_output, path_to_school_solution_errors)
 
 
 def ensure_match(command_list, user_output, user_errors, school_output, school_error):
@@ -256,8 +293,25 @@ def ensure_valgrind_output_ok(valgrind_out: str):
                                                 f"{valgrind_out}")
 
 
-def tester_init():
+def initialize():
     global IGNORE_NEWLINES, USE_VALGRIND_IF_AVAILABLE, UPDATE_SCHOOL_FILES
+
+    if not isfile(PATH_TO_EXECUTABLE):
+        print(f"Couldn't find the TreeAnalyzer executable at \"{PATH_TO_EXECUTABLE}\"\n"
+              f"Either you didn't compile it or you didn't configure the path at the python file \"{__file__}\"",
+              file=sys.stderr)
+        sys.exit(-1)
+    else:
+        if sys.platform == "win32":
+            with open(PATH_TO_EXECUTABLE, 'rb') as exe_file:
+                binary = exe_file.read()
+                for match in re.finditer(b"[^\\x00-\\x1F\\x7F-\\xFF]{4,}", binary):
+                    if b"cygwin1.dll" == match.group(0):
+                        print(".exe was compiled via Cygwin which is unsupported"
+                              " by these tests - use a MSVC/MinGW toolchain instead,"
+                              " or use a Linux system.", file=sys.stderr)
+                        sys.exit(-1)
+
     if IGNORE_NEWLINES:
         print("Running tests while ignoring newline differences. Your program should run successfully "
               "without them", file=sys.stderr)
@@ -268,9 +322,9 @@ def tester_init():
               " it to be manually installed. Windows has no valgrind(unless you use WSL)", file=sys.stderr)
         USE_VALGRIND_IF_AVAILABLE = False
 
-    if UPDATE_SCHOOL_FILES and not isfile(SCHOOL_EXECUTABLE_PATH):
+    if UPDATE_SCHOOL_FILES and not ON_HUJI:
         print(f"UPDATE_SCHOOL_FILES is set, but couldn't find the school solution at {SCHOOL_EXECUTABLE_PATH}\n"
-              f"Will be using the already included system_out files instead", file=sys.stderr)
+              f"Will be using the already included output files instead", file=sys.stderr)
         UPDATE_SCHOOL_FILES = False
 
 
@@ -278,4 +332,4 @@ if __name__ == '__main__':
     print(f"Run this via `python3 -m pytest tester.py`", file=sys.stderr)
     sys.exit(-1)
 else:
-    tester_init()
+    initialize()
