@@ -1,0 +1,7 @@
+Root Vertex: 11
+Vertices Count: 36
+Edges Count: 35
+Length of Minimal Branch: 4
+Length of Maximal Branch: 11
+Diameter Length: 13
+Shortest Path Between 31 and 27: 31 10 22 0 20 14 4 27

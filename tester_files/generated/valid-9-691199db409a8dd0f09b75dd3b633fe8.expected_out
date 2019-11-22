@@ -1,0 +1,7 @@
+Root Vertex: 6
+Vertices Count: 9
+Edges Count: 8
+Length of Minimal Branch: 1
+Length of Maximal Branch: 4
+Diameter Length: 5
+Shortest Path Between 2 and 3: 2 8 5 3
